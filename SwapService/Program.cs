@@ -66,6 +66,7 @@ builder.Services.AddScoped<ISwapRepository, SwapRepository>();
 builder.Services.AddScoped<IBatteryRepository, BatteryRepository>();
 builder.Services.AddScoped<IPaymentRepository, PaymentRepository>();
 builder.Services.AddScoped<IBookingRepository, BookingRepository>();
+builder.Services.AddScoped<IStaffRepository, StaffRepository>();
 builder.Services.AddScoped<ISwapService, SwapService.Infrastructure.Services.SwapService>();
 
 builder.Services.AddCors(options =>

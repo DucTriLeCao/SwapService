@@ -9,10 +9,6 @@ namespace SwapService.Domain.Models;
 
 public partial class ev_battery_swapContext : DbContext
 {
-    public ev_battery_swapContext()
-    {
-    }
-
     public ev_battery_swapContext(DbContextOptions<ev_battery_swapContext> options)
         : base(options)
     {
@@ -23,6 +19,8 @@ public partial class ev_battery_swapContext : DbContext
     public virtual DbSet<Booking> Bookings { get; set; }
 
     public virtual DbSet<Payment> Payments { get; set; }
+
+    public virtual DbSet<Staff> Staff { get; set; }
 
     public virtual DbSet<Swap> Swaps { get; set; }
 
@@ -187,6 +185,32 @@ public partial class ev_battery_swapContext : DbContext
                 .HasConstraintName("fk_payments_swaps");
         });
 
+        modelBuilder.Entity<Staff>(entity =>
+        {
+            entity.HasKey(e => e.StaffId).HasName("pk_staff");
+
+            entity.ToTable("staff");
+
+            entity.HasIndex(e => e.UserId, "UQ__staff__B9BE370E968F8940").IsUnique();
+
+            entity.HasIndex(e => e.StationId, "ix_staff_station");
+
+            entity.HasIndex(e => e.EmployeeCode, "ux_staff_employee_code").IsUnique();
+
+            entity.Property(e => e.StaffId)
+                .HasDefaultValueSql("(newid())")
+                .HasColumnName("staff_id");
+            entity.Property(e => e.EmployeeCode)
+                .HasMaxLength(50)
+                .HasColumnName("employee_code");
+            entity.Property(e => e.HireDate).HasColumnName("hire_date");
+            entity.Property(e => e.Position)
+                .HasMaxLength(100)
+                .HasColumnName("position");
+            entity.Property(e => e.StationId).HasColumnName("station_id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+        });
+
         modelBuilder.Entity<Swap>(entity =>
         {
             entity.HasKey(e => e.SwapId).HasName("pk_swaps");
@@ -233,6 +257,10 @@ public partial class ev_battery_swapContext : DbContext
                 .HasForeignKey(d => d.BookingId)
                 .OnDelete(DeleteBehavior.SetNull)
                 .HasConstraintName("fk_swaps_bookings");
+
+            entity.HasOne(d => d.Staff).WithMany(p => p.Swaps)
+                .HasForeignKey(d => d.StaffId)
+                .HasConstraintName("fk_swaps_staff");
         });
 
         OnModelCreatingPartial(modelBuilder);

@@ -3,7 +3,7 @@
    "ContextClassName": "ev_battery_swapContext",
    "ContextNamespace": null,
    "FilterSchemas": false,
-   "IncludeConnectionString": true,
+   "IncludeConnectionString": false,
    "ModelNamespace": null,
    "OutputContextPath": null,
    "OutputPath": "Models",
@@ -24,6 +24,10 @@
       },
       {
          "Name": "[dbo].[payments]",
+         "ObjectType": 0
+      },
+      {
+         "Name": "[dbo].[staff]",
          "ObjectType": 0
       },
       {

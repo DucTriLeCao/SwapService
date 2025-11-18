@@ -44,4 +44,6 @@ public partial class Swap
     public virtual Booking Booking { get; set; }
 
     public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>();
+
+    public virtual Staff Staff { get; set; }
 }

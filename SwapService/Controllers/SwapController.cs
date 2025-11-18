@@ -23,8 +23,8 @@ public class SwapController : ControllerBase
     {
         try
         {
-            var staffContext = User.GetStaffContext();
-            var result = await _swapService.StartSwapAsync(request, staffContext);
+            var userId = User.GetUserId();
+            var result = await _swapService.StartSwapAsync(request, userId);
             return Ok(ApiResponse<SwapStartResponse>.SuccessResponse(result, "Swap started successfully"));
         }
         catch (Exception ex)
@@ -38,8 +38,8 @@ public class SwapController : ControllerBase
     {
         try
         {
-            var staffContext = User.GetStaffContext();
-            var result = await _swapService.CompleteSwapAsync(request, staffContext);
+            var userId = User.GetUserId();
+            var result = await _swapService.CompleteSwapAsync(request, userId);
             return Ok(ApiResponse<SwapCompleteResponse>.SuccessResponse(result, "Swap completed successfully"));
         }
         catch (Exception ex)
@@ -53,8 +53,8 @@ public class SwapController : ControllerBase
     {
         try
         {
-            var staffContext = User.GetStaffContext();
-            var result = await _swapService.ProcessPaymentAsync(request, staffContext);
+            var userId = User.GetUserId();
+            var result = await _swapService.ProcessPaymentAsync(request, userId);
             return Ok(ApiResponse<PaymentResponse>.SuccessResponse(result, "Payment processed successfully"));
         }
         catch (Exception ex)
@@ -68,8 +68,8 @@ public class SwapController : ControllerBase
     {
         try
         {
-            var staffContext = User.GetStaffContext();
-            var result = await _swapService.GetSwapStatusAsync(swapId, staffContext);
+            var userId = User.GetUserId();
+            var result = await _swapService.GetSwapStatusAsync(swapId, userId);
             return Ok(ApiResponse<SwapStatusResponse>.SuccessResponse(result));
         }
         catch (Exception ex)
@@ -83,8 +83,8 @@ public class SwapController : ControllerBase
     {
         try
         {
-            var staffContext = User.GetStaffContext();
-            var result = await _swapService.GetSwapHistoryAsync(request, staffContext);
+            var userId = User.GetUserId();
+            var result = await _swapService.GetSwapHistoryAsync(request, userId);
             return Ok(ApiResponse<SwapHistoryResponse>.SuccessResponse(result, "Swap history retrieved successfully"));
         }
         catch (Exception ex)
@@ -98,8 +98,8 @@ public class SwapController : ControllerBase
     {
         try
         {
-            var staffContext = User.GetStaffContext();
-            var result = await _swapService.GetAllSwapsAsync(staffContext);
+            var userId = User.GetUserId();
+            var result = await _swapService.GetAllSwapsAsync(userId);
             return Ok(ApiResponse<SwapListAllResponse>.SuccessResponse(result, "All swaps retrieved successfully"));
         }
         catch (Exception ex)
@@ -113,8 +113,8 @@ public class SwapController : ControllerBase
     {
         try
         {
-            var staffContext = User.GetStaffContext();
-            var result = await _swapService.GetOngoingSwapsAsync(staffContext);
+            var userId = User.GetUserId();
+            var result = await _swapService.GetOngoingSwapsAsync(userId);
             return Ok(ApiResponse<SwapListResponse>.SuccessResponse(result, "Ongoing swaps retrieved successfully"));
         }
         catch (Exception ex)
@@ -128,8 +128,8 @@ public class SwapController : ControllerBase
     {
         try
         {
-            var staffContext = User.GetStaffContext();
-            var result = await _swapService.CancelSwapAsync(swapId, staffContext);
+            var userId = User.GetUserId();
+            var result = await _swapService.CancelSwapAsync(swapId, userId);
             return Ok(ApiResponse<SwapCancelResponse>.SuccessResponse(result, "Swap cancelled successfully"));
         }
         catch (Exception ex)

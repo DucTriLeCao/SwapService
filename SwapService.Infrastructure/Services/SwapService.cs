@@ -12,21 +12,31 @@ public class SwapService : ISwapService
     private readonly IBatteryRepository _batteryRepository;
     private readonly IPaymentRepository _paymentRepository;
     private readonly IBookingRepository _bookingRepository;
+    private readonly IStaffRepository _staffRepository;
 
     public SwapService(
         ISwapRepository swapRepository,
         IBatteryRepository batteryRepository,
         IPaymentRepository paymentRepository,
-        IBookingRepository bookingRepository)
+        IBookingRepository bookingRepository,
+        IStaffRepository staffRepository)
     {
         _swapRepository = swapRepository;
         _batteryRepository = batteryRepository;
         _paymentRepository = paymentRepository;
         _bookingRepository = bookingRepository;
+        _staffRepository = staffRepository;
     }
 
-    public async Task<SwapStartResponse> StartSwapAsync(SwapStartRequest request, StaffContext staffContext)
+    public async Task<SwapStartResponse> StartSwapAsync(SwapStartRequest request, Guid userId)
     {
+        var staff = await _staffRepository.GetByUserIdAsync(userId);
+        if (staff == null)
+            throw new UnauthorizedAccessException("Staff not found");
+
+        if (!staff.StationId.HasValue)
+            throw new UnauthorizedAccessException("Staff is not assigned to any station");
+
         if (request.BookingId.HasValue && request.BookingId.Value != Guid.Empty)
         {
             var booking = await _bookingRepository.GetByIdAsync(request.BookingId.Value);
@@ -37,11 +47,9 @@ public class SwapService : ISwapService
             }
         }
 
-        var availableBatteries = await _batteryRepository.GetAvailableBatteriesAsync(staffContext.StationId);
-        var batteryIn = availableBatteries.FirstOrDefault();
-        
+        var batteryIn = await _batteryRepository.GetByIdAsync(request.BatteryInId);
         if (batteryIn == null)
-            throw new Exception("No available battery at this station");
+            throw new Exception("Battery not found");
 
         var swap = new Swap
         {
@@ -49,9 +57,10 @@ public class SwapService : ISwapService
             BookingId = request.BookingId,
             DriverId = request.DriverId,
             VehicleId = request.VehicleId,
-            StationId = staffContext.StationId,
-            StaffId = staffContext.StaffId,
-            BatteryInId = batteryIn.BatteryId,
+            StationId = staff.StationId.Value,
+            StaffId = staff.StaffId,
+            BatteryInId = request.BatteryInId,
+            BatteryInChargeLevel = request.BatteryInChargeLevel,
             SwapStartTime = DateTime.UtcNow,
             Status = SwapStatus.InProgress,
             CreatedAt = DateTime.UtcNow
@@ -59,7 +68,9 @@ public class SwapService : ISwapService
 
         var createdSwap = await _swapRepository.CreateAsync(swap);
 
-        batteryIn.Status = BatteryStatus.InUse;
+        batteryIn.ChargeLevel = request.BatteryInChargeLevel;
+        batteryIn.Status = request.BatteryInStatus;
+        batteryIn.LastSwapDate = DateTime.UtcNow;
         await _batteryRepository.UpdateAsync(batteryIn);
 
         return new SwapStartResponse
@@ -68,23 +79,31 @@ public class SwapService : ISwapService
             BatteryInId = batteryIn.BatteryId,
             Status = createdSwap.Status,
             SwapStartTime = createdSwap.SwapStartTime,
-            BatteryInChargeLevel = batteryIn.ChargeLevel
+            BatteryInChargeLevel = request.BatteryInChargeLevel
         };
     }
 
-    public async Task<SwapCompleteResponse> CompleteSwapAsync(SwapCompleteRequest request, StaffContext staffContext)
+    public async Task<SwapCompleteResponse> CompleteSwapAsync(SwapCompleteRequest request, Guid userId)
     {
+        var staff = await _staffRepository.GetByUserIdAsync(userId);
+        if (staff == null)
+            throw new UnauthorizedAccessException("Staff not found");
+
+        if (!staff.StationId.HasValue)
+            throw new UnauthorizedAccessException("Staff is not assigned to any station");
+
         var swap = await _swapRepository.GetByIdAsync(request.SwapId);
         if (swap == null)
             throw new Exception("Swap not found");
 
-        if (swap.StationId != staffContext.StationId)
+        if (swap.StationId != staff.StationId.Value)
             throw new UnauthorizedAccessException("You can only complete swaps in your station");
 
         swap.BatteryOutId = request.BatteryOutId;
         swap.BatteryOutChargeLevel = request.BatteryOutChargeLevel;
         swap.SwapEndTime = DateTime.UtcNow;
         swap.DurationMinutes = (int)(swap.SwapEndTime.Value - swap.SwapStartTime).TotalMinutes;
+        swap.OdometerReading = request.OdometerReading;
         swap.Status = SwapStatus.Completed;
         swap.Notes = request.Notes;
 
@@ -94,22 +113,10 @@ public class SwapService : ISwapService
         if (batteryOut != null)
         {
             batteryOut.ChargeLevel = request.BatteryOutChargeLevel;
+            batteryOut.Status = request.BatteryOutStatus;
             if (request.BatteryOutSoh.HasValue)
             {
                 batteryOut.SohPercentage = request.BatteryOutSoh.Value;
-            }
-            
-            if (request.BatteryOutChargeLevel < 20)
-            {
-                batteryOut.Status = BatteryStatus.Charging;
-            }
-            else if (request.BatteryOutChargeLevel >= 80)
-            {
-                batteryOut.Status = BatteryStatus.Available;
-            }
-            else
-            {
-                batteryOut.Status = BatteryStatus.Charging;
             }
             
             batteryOut.LastSwapDate = DateTime.UtcNow;
@@ -150,13 +157,20 @@ public class SwapService : ISwapService
         };
     }
 
-    public async Task<PaymentResponse> ProcessPaymentAsync(SwapPaymentRequest request, StaffContext staffContext)
+    public async Task<PaymentResponse> ProcessPaymentAsync(SwapPaymentRequest request, Guid userId)
     {
+        var staff = await _staffRepository.GetByUserIdAsync(userId);
+        if (staff == null)
+            throw new UnauthorizedAccessException("Staff not found");
+
+        if (!staff.StationId.HasValue)
+            throw new UnauthorizedAccessException("Staff is not assigned to any station");
+
         var swap = await _swapRepository.GetByIdAsync(request.SwapId);
         if (swap == null)
             throw new Exception("Swap not found");
 
-        if (swap.StationId != staffContext.StationId)
+        if (swap.StationId != staff.StationId.Value)
             throw new UnauthorizedAccessException("You can only process payments for swaps in your station");
 
         var payment = new Payment
@@ -164,7 +178,7 @@ public class SwapService : ISwapService
             PaymentId = Guid.NewGuid(),
             DriverId = swap.DriverId,
             SwapId = swap.SwapId,
-            PaymentType = "SwapFee",
+            PaymentType = "swap",
             Amount = request.Amount,
             PaymentMethod = request.PaymentMethod,
             PaymentStatus = PaymentStatus.Completed,
@@ -191,13 +205,20 @@ public class SwapService : ISwapService
         };
     }
 
-    public async Task<SwapStatusResponse> GetSwapStatusAsync(Guid swapId, StaffContext staffContext)
+    public async Task<SwapStatusResponse> GetSwapStatusAsync(Guid swapId, Guid userId)
     {
+        var staff = await _staffRepository.GetByUserIdAsync(userId);
+        if (staff == null)
+            throw new UnauthorizedAccessException("Staff not found");
+
+        if (!staff.StationId.HasValue)
+            throw new UnauthorizedAccessException("Staff is not assigned to any station");
+
         var swap = await _swapRepository.GetByIdAsync(swapId);
         if (swap == null)
             throw new Exception("Swap not found");
 
-        if (swap.StationId != staffContext.StationId)
+        if (swap.StationId != staff.StationId.Value)
             throw new UnauthorizedAccessException("You can only view swaps in your station");
 
         var batteryIn = await _batteryRepository.GetByIdAsync(swap.BatteryInId);
@@ -220,11 +241,18 @@ public class SwapService : ISwapService
         };
     }
 
-    public async Task<SwapHistoryResponse> GetSwapHistoryAsync(SwapHistoryRequest request, StaffContext staffContext)
+    public async Task<SwapHistoryResponse> GetSwapHistoryAsync(SwapHistoryRequest request, Guid userId)
     {
+        var staff = await _staffRepository.GetByUserIdAsync(userId);
+        if (staff == null)
+            throw new UnauthorizedAccessException("Staff not found");
+
+        if (!staff.StationId.HasValue)
+            throw new UnauthorizedAccessException("Staff is not assigned to any station");
+
         var query = await _swapRepository.GetAllAsync();
         
-        query = query.Where(s => s.StationId == staffContext.StationId).ToList();
+        query = query.Where(s => s.StationId == staff.StationId.Value).ToList();
         
         if (request.DriverId.HasValue)
             query = query.Where(s => s.DriverId == request.DriverId.Value).ToList();
@@ -267,11 +295,18 @@ public class SwapService : ISwapService
         };
     }
 
-    public async Task<SwapListResponse> GetOngoingSwapsAsync(StaffContext staffContext)
+    public async Task<SwapListResponse> GetOngoingSwapsAsync(Guid userId)
     {
+        var staff = await _staffRepository.GetByUserIdAsync(userId);
+        if (staff == null)
+            throw new UnauthorizedAccessException("Staff not found");
+
+        if (!staff.StationId.HasValue)
+            throw new UnauthorizedAccessException("Staff is not assigned to any station");
+
         var allSwaps = await _swapRepository.GetAllAsync();
         var ongoingSwaps = allSwaps
-            .Where(s => s.StationId == staffContext.StationId && s.Status == SwapStatus.InProgress)
+            .Where(s => s.StationId == staff.StationId.Value && s.Status == SwapStatus.InProgress)
             .OrderBy(s => s.SwapStartTime)
             .ToList();
 
@@ -299,20 +334,28 @@ public class SwapService : ISwapService
         };
     }
 
-    public async Task<SwapCancelResponse> CancelSwapAsync(Guid swapId, StaffContext staffContext)
+    public async Task<SwapCancelResponse> CancelSwapAsync(Guid swapId, Guid userId)
     {
+        var staff = await _staffRepository.GetByUserIdAsync(userId);
+        if (staff == null)
+            throw new UnauthorizedAccessException("Staff not found");
+
+        if (!staff.StationId.HasValue)
+            throw new UnauthorizedAccessException("Staff is not assigned to any station");
+
         var swap = await _swapRepository.GetByIdAsync(swapId);
         if (swap == null)
             throw new Exception("Swap not found");
 
-        if (swap.StationId != staffContext.StationId)
+        if (swap.StationId != staff.StationId.Value)
             throw new UnauthorizedAccessException("You can only cancel swaps in your station");
 
         if (swap.Status != SwapStatus.InProgress)
             throw new Exception($"Cannot cancel swap with status: {swap.Status}");
 
-        swap.Status = SwapStatus.Cancelled;
+        swap.Status = SwapStatus.Failed;
         swap.SwapEndTime = DateTime.UtcNow;
+        swap.Notes = (swap.Notes ?? "") + " [Cancelled by staff]";
         await _swapRepository.UpdateAsync(swap);
 
         var batteryIn = await _batteryRepository.GetByIdAsync(swap.BatteryInId);
@@ -341,12 +384,19 @@ public class SwapService : ISwapService
         };
     }
 
-    public async Task<SwapListAllResponse> GetAllSwapsAsync(StaffContext staffContext)
+    public async Task<SwapListAllResponse> GetAllSwapsAsync(Guid userId)
     {
+        var staff = await _staffRepository.GetByUserIdAsync(userId);
+        if (staff == null)
+            throw new UnauthorizedAccessException("Staff not found");
+
+        if (!staff.StationId.HasValue)
+            throw new UnauthorizedAccessException("Staff is not assigned to any station");
+
         var allSwaps = await _swapRepository.GetAllAsync();
         
         var swapItems = allSwaps
-            .Where(s => s.StationId == staffContext.StationId)
+            .Where(s => s.StationId == staff.StationId.Value)
             .Select(s => new SwapDetailItem
         {
             SwapId = s.SwapId,
